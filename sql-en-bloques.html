@@ -1,0 +1,1383 @@
+<title>SQL en Bloques</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@500;700&family=Lexend:wght@400;500;600&display=swap">
+<style>
+  /* Layout: mesa de trabajo — estantería de piezas arriba, tapete de montaje en el centro, marcador en vivo abajo; carril de retos a la derecha */
+  :root {
+    --bg: #EDF0F7;
+    --surface: #FFFFFF;
+    --surface-2: #F5F7FC;
+    --ink: #141A33;
+    --muted: #586185;
+    --line: #D8DEEE;
+    --mat: #E4E9F5;
+    --mat-dot: #C8D0E6;
+
+    --cmd: #2F6BEA;
+    --clause: #7A3FE2;
+    --op: #0B845A;
+    --ident: #394155;
+    --fn: #C0336B;
+    --val: #F2B33D;
+    --val-ink: #3A2500;
+    --on-block: #FFFFFF;
+
+    --ok: #0B845A;   --ok-soft: #E1F4EA;
+    --warn: #9A5B00; --warn-soft: #FFF2D6;
+    --bad: #CF2F4A;  --bad-soft: #FDE7EB;
+    --info: #2F6BEA; --info-soft: #E6EDFE;
+
+    --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Lexend", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0D1121; --surface: #151A2D; --surface-2: #1B2137; --ink: #E8ECF8; --muted: #9AA3C4; --line: #29304C;
+      --mat: #10152A; --mat-dot: #262E4D;
+      --cmd: #3C79FF; --clause: #8A55F0; --op: #0F9065; --ident: #4A5371; --fn: #D2457E; --val: #F2B33D; --val-ink: #3A2500; --on-block: #FFFFFF;
+      --ok: #3FCB8F; --ok-soft: #0F2C20; --warn: #F2B33D; --warn-soft: #31250C; --bad: #FF6E84; --bad-soft: #391521; --info: #86A9FF; --info-soft: #172349;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0D1121; --surface: #151A2D; --surface-2: #1B2137; --ink: #E8ECF8; --muted: #9AA3C4; --line: #29304C;
+    --mat: #10152A; --mat-dot: #262E4D;
+    --cmd: #3C79FF; --clause: #8A55F0; --op: #0F9065; --ident: #4A5371; --fn: #D2457E; --val: #F2B33D; --val-ink: #3A2500; --on-block: #FFFFFF;
+    --ok: #3FCB8F; --ok-soft: #0F2C20; --warn: #F2B33D; --warn-soft: #31250C; --bad: #FF6E84; --bad-soft: #391521; --info: #86A9FF; --info-soft: #172349;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--font-body); }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+  .tabnum { font-variant-numeric: tabular-nums; }
+  .eyebrow { font-size: .7rem; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+
+  /* ---------- Piezas de rompecabezas ---------- */
+  .blk {
+    --blk: var(--ident); --blk-ink: var(--on-block);
+    position: relative;
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-family: var(--font-mono); font-weight: 700; font-size: .8rem; line-height: 1;
+    padding: .55rem .75rem .55rem .9rem;
+    border-radius: .55rem;
+    color: var(--blk-ink); background: var(--blk);
+    box-shadow: 0 3px 0 color-mix(in srgb, var(--blk) 62%, #000);
+    cursor: grab; user-select: none; white-space: nowrap;
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+  }
+  .blk::after { /* saliente */
+    content: ""; position: absolute; right: -5px; top: 50%; width: 10px; height: 10px; margin-top: -6px;
+    border-radius: 50%; background: var(--blk); z-index: 1;
+  }
+  .blk::before { /* hueco */
+    content: ""; position: absolute; left: -5px; top: 50%; width: 10px; height: 10px; margin-top: -6px;
+    border-radius: 50%; background: var(--slot-bg, var(--surface));
+  }
+  .blk:hover { transform: translateY(-1px); filter: brightness(1.06); }
+  .blk:active { transform: translateY(2px); box-shadow: 0 1px 0 color-mix(in srgb, var(--blk) 62%, #000); cursor: grabbing; }
+  .blk:focus-visible { outline: 3px solid var(--info); outline-offset: 3px; }
+  .cat-cmd    { --blk: var(--cmd); }
+  .cat-clause { --blk: var(--clause); }
+  .cat-op     { --blk: var(--op); }
+  .cat-ident  { --blk: var(--ident); }
+  .cat-fn     { --blk: var(--fn); }
+  .cat-val    { --blk: var(--val); --blk-ink: var(--val-ink); }
+  .cat-sym    { --blk: var(--surface); --blk-ink: var(--ink); box-shadow: 0 3px 0 var(--line), inset 0 0 0 2px var(--line); }
+  .cat-sym::after { background: var(--line); }
+  .blk.sm { font-size: .72rem; padding: .42rem .6rem .42rem .75rem; }
+
+  .blk .x {
+    display: none; width: 1rem; height: 1rem; border-radius: 50%;
+    align-items: center; justify-content: center; font-size: .7rem;
+    background: color-mix(in srgb, var(--blk-ink) 22%, transparent);
+  }
+  .in-editor .blk:hover .x, .in-editor .blk:focus-visible .x { display: inline-flex; }
+  .blk.is-bad { outline: 3px solid var(--bad); outline-offset: 3px; animation: shake .35s ease 1; }
+  .blk.is-dragging { opacity: .35; }
+
+  .mat {
+    --slot-bg: var(--mat);
+    background-color: var(--mat);
+    background-image: radial-gradient(var(--mat-dot) 1.2px, transparent 1.3px);
+    background-size: 18px 18px;
+  }
+  .mat.is-over { box-shadow: inset 0 0 0 2px var(--info); }
+  .caret { position: relative; width: 0; align-self: stretch; }
+  .caret::after {
+    content: ""; position: absolute; left: -2px; top: -4px; bottom: -4px; width: 4px; border-radius: 4px; background: var(--info);
+  }
+
+  .row-in { animation: rowIn .22s ease both; }
+  .pop { animation: pop .45s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes shake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-4px) } 75% { transform: translateX(4px) } }
+  @keyframes rowIn { from { opacity: .0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+  @keyframes pop { from { transform: scale(.85); opacity: 0 } to { transform: none; opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) {
+    .blk, .row-in, .pop, .blk.is-bad { animation: none !important; transition: none !important; }
+  }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--info); outline-offset: 2px; }
+</style>
+
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+  tailwind.config = {
+    corePlugins: { preflight: true },
+    theme: {
+      extend: {
+        colors: {
+          bg: 'var(--bg)', surface: 'var(--surface)', surface2: 'var(--surface-2)', ink: 'var(--ink)', muted: 'var(--muted)', line: 'var(--line)',
+          cmd: 'var(--cmd)', clause: 'var(--clause)', op: 'var(--op)', ident: 'var(--ident)', fn: 'var(--fn)', val: 'var(--val)', 'val-ink': 'var(--val-ink)',
+          ok: 'var(--ok)', 'ok-soft': 'var(--ok-soft)', warn: 'var(--warn)', 'warn-soft': 'var(--warn-soft)',
+          bad: 'var(--bad)', 'bad-soft': 'var(--bad-soft)', info: 'var(--info)', 'info-soft': 'var(--info-soft)', onblock: 'var(--on-block)'
+        },
+        fontFamily: { display: 'var(--font-display)', body: 'var(--font-body)', mono: 'var(--font-mono)' }
+      }
+    }
+  };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<div id="root">
+  <p style="padding:24px 16px;font-family:system-ui,sans-serif;color:var(--muted)">Cargando las piezas…</p>
+</div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect } = React;
+
+/* =====================================================================
+   1. Base de datos de ejemplo (datos ficticios con fines didácticos)
+   ===================================================================== */
+const COLUMNS = ['id', 'nombre', 'pais', 'goles', 'equipo'];
+const NUMERIC = new Set(['id', 'goles']);
+const BASE_DATA = [
+  { id: 1,  nombre: 'Lucía Romero',    pais: 'España',    goles: 18, equipo: 'Atlético Sol' },
+  { id: 2,  nombre: 'Mateo Silva',     pais: 'Brasil',    goles: 22, equipo: 'Deportivo Luna' },
+  { id: 3,  nombre: 'Valentina Ríos',  pais: 'Argentina', goles: 9,  equipo: 'Atlético Sol' },
+  { id: 4,  nombre: 'Kenji Watanabe',  pais: 'Japón',     goles: 4,  equipo: 'Racing Norte' },
+  { id: 5,  nombre: 'Amara Diallo',    pais: 'Senegal',   goles: 14, equipo: 'Deportivo Luna' },
+  { id: 6,  nombre: 'Diego Herrera',   pais: 'México',    goles: 11, equipo: 'Unión Andina' },
+  { id: 7,  nombre: 'Sofía Castro',    pais: 'Argentina', goles: 25, equipo: 'Racing Norte' },
+  { id: 8,  nombre: 'Lucas Moreau',    pais: 'Francia',   goles: 7,  equipo: 'Unión Andina' },
+  { id: 9,  nombre: 'Camila Duarte',   pais: 'Brasil',    goles: 16, equipo: 'Atlético Sol' },
+  { id: 10, nombre: 'Hugo Navarro',    pais: 'España',    goles: 3,  equipo: 'Racing Norte' },
+  { id: 11, nombre: 'Nia Mensah',      pais: 'Ghana',     goles: 12, equipo: 'Unión Andina' },
+  { id: 12, nombre: 'Pablo Ortega',    pais: 'Colombia',  goles: 20, equipo: 'Deportivo Luna' },
+];
+
+/* =====================================================================
+   2. Inventario de piezas
+   ===================================================================== */
+const GROUPS = [
+  { cat: 'cmd',    title: 'Comandos',          note: 'La acción que quieres hacer', items: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+  { cat: 'clause', title: 'Cláusulas',         note: 'De dónde, cuáles y cómo',     items: ['FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT', 'ASC', 'DESC', 'INTO', 'VALUES', 'SET'] },
+  { cat: 'op',     title: 'Operadores',        note: 'Comparan y combinan',         items: ['=', '<>', '>', '<', '>=', '<=', 'AND', 'OR', 'LIKE', 'IN'] },
+  { cat: 'ident',  title: 'Tablas y columnas', note: 'Dónde están los datos',       items: ['jugadores', '*', 'id', 'nombre', 'pais', 'goles', 'equipo'] },
+  { cat: 'fn',     title: 'Funciones',         note: 'Resumen de varias filas',     items: ['COUNT(*)', 'SUM(goles)', 'AVG(goles)', 'MAX(goles)', 'MIN(goles)'] },
+  { cat: 'val',    title: 'Valores y signos',  note: 'Datos concretos',             items: [',', '(', ')', '3', '5', '10', '15', '20', "'España'", "'Argentina'", "'Brasil'", "'Atlético Sol'", "'Deportivo Luna'", "'%a%'"] },
+];
+const CAT_OF = {};
+GROUPS.forEach(g => g.items.forEach(v => { CAT_OF[v] = g.cat; }));
+
+const TIPS = {
+  SELECT: 'Lee datos de una tabla', INSERT: 'Añade una fila nueva', UPDATE: 'Cambia datos existentes', DELETE: 'Borra filas',
+  FROM: 'Indica de qué tabla', WHERE: 'Filtra filas con una condición', 'GROUP BY': 'Junta filas en grupos', 'ORDER BY': 'Ordena el resultado',
+  LIMIT: 'Máximo de filas a mostrar', ASC: 'De menor a mayor', DESC: 'De mayor a menor', INTO: 'En qué tabla insertar', VALUES: 'Los datos de la fila nueva', SET: 'Qué columna cambiar',
+  '=': 'Igual a', '<>': 'Distinto de', '>': 'Mayor que', '<': 'Menor que', '>=': 'Mayor o igual que', '<=': 'Menor o igual que',
+  AND: 'Se cumplen las dos condiciones', OR: 'Se cumple al menos una', LIKE: 'Se parece a un patrón (% = lo que sea)', IN: 'Está dentro de una lista',
+  jugadores: 'La tabla de esta base de datos', '*': 'Todas las columnas', id: 'Número único de cada jugador', nombre: 'Texto', pais: 'Texto', goles: 'Número', equipo: 'Texto',
+  'COUNT(*)': 'Cuenta filas', 'SUM(goles)': 'Suma los goles', 'AVG(goles)': 'Media de goles', 'MAX(goles)': 'Máximo de goles', 'MIN(goles)': 'Mínimo de goles',
+  ',': 'Separa elementos de una lista', '(': 'Abre una lista', ')': 'Cierra una lista',
+};
+
+let uidCounter = 0;
+function makeToken(v) {
+  const base = { uid: 't' + (++uidCounter), v };
+  if (v === ',' || v === '(' || v === ')') return { ...base, cat: 'val', vt: 'sym' };
+  if (/^-?\d+(\.\d+)?$/.test(v)) return { ...base, cat: 'val', vt: 'num', value: Number(v) };
+  if (/^'.*'$/.test(v)) return { ...base, cat: 'val', vt: 'str', value: v.slice(1, -1) };
+  return { ...base, cat: CAT_OF[v] || 'ident' };
+}
+const blockClass = t => 'blk ' + (t.vt === 'sym' ? 'cat-sym' : 'cat-' + t.cat);
+
+/* =====================================================================
+   3. Analizador: convierte las piezas en una consulta o en una pista
+   ===================================================================== */
+class Stop {
+  constructor(tone, msg, idx = null, suggest = []) { this.tone = tone; this.msg = msg; this.idx = idx; this.suggest = suggest; }
+}
+const isKw   = (t, k) => !!t && (t.cat === 'cmd' || t.cat === 'clause' || t.cat === 'op') && t.v === k;
+const isSym  = (t, s) => !!t && t.vt === 'sym' && t.v === s;
+const isCol  = t => !!t && t.cat === 'ident' && COLUMNS.includes(t.v);
+const isTable = t => !!t && t.cat === 'ident' && t.v === 'jugadores';
+const isStar = t => !!t && t.cat === 'ident' && t.v === '*';
+const isFn   = t => !!t && t.cat === 'fn';
+const isVal  = t => !!t && t.cat === 'val' && (t.vt === 'num' || t.vt === 'str');
+const isNum  = t => !!t && t.vt === 'num';
+const CLAUSE_ORDER = ['WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT'];
+const VAL_HINT = { goles: ['10', '15'], id: ['3', '5'], pais: ["'Argentina'", "'España'"], equipo: ["'Atlético Sol'", "'Deportivo Luna'"], nombre: [] };
+
+function typeProblem(col, tok) {
+  if (NUMERIC.has(col) && tok.vt === 'str') return `${col} guarda números, así que su valor va sin comillas: usa un número como 10.`;
+  if (!NUMERIC.has(col) && tok.vt === 'num') return `${col} guarda texto, así que su valor va entre comillas, como 'España'. Créalo en «Tu propio valor».`;
+  return null;
+}
+
+function parse(tokens) {
+  let i = 0;
+  const warnings = [];
+  const end = () => i >= tokens.length;
+  const peek = () => tokens[i];
+  const stop = (tone, msg, suggest = [], idx) => {
+    throw new Stop(tone, msg, idx !== undefined ? idx : (tone === 'fix' ? i : null), suggest);
+  };
+  const need = (ok, nextMsg, fixMsg, suggest = []) => {
+    if (end()) stop('next', nextMsg, suggest);
+    const t = peek();
+    if (!ok(t)) stop('fix', typeof fixMsg === 'function' ? fixMsg(t) : fixMsg);
+    i++;
+    return t;
+  };
+  const operand = t => (isCol(t) ? { type: 'col', name: t.v } : { type: 'val', value: t.value, vt: t.vt });
+
+  /* --- condiciones (WHERE) --- */
+  function parseOr(ctx) {
+    let l = parseAnd(ctx);
+    while (!end() && isKw(peek(), 'OR')) { i++; l = { type: 'or', l, r: parseAnd('OR') }; }
+    return l;
+  }
+  function parseAnd(ctx) {
+    let l = parseCond(ctx);
+    while (!end() && isKw(peek(), 'AND')) { i++; l = { type: 'and', l, r: parseCond('AND') }; }
+    return l;
+  }
+  function parseCond(ctx) {
+    if (end()) {
+      stop('next', ctx === 'WHERE'
+        ? 'Después de WHERE escribe una condición: columna, operador y valor. Por ejemplo: goles > 10.'
+        : `Después de ${ctx} añade otra condición completa, por ejemplo: pais = 'Brasil'.`,
+        ['goles', 'pais', 'equipo']);
+    }
+    const t = peek();
+    if (isSym(t, '(')) {
+      i++;
+      const e = parseOr('(');
+      if (end()) stop('next', 'Cierra el paréntesis con ).', [')']);
+      if (!isSym(peek(), ')')) stop('fix', 'Aquí debería cerrarse el paréntesis con ).');
+      i++;
+      return e;
+    }
+    if (isFn(t)) stop('fix', `${t.v} no se puede usar en WHERE: WHERE revisa fila a fila, antes de agrupar. Usa una columna, como goles.`);
+    if (isStar(t) || isTable(t)) stop('fix', `Una condición compara una columna concreta, no ${t.v}. Prueba con goles o pais.`);
+    if (t.cat === 'op') stop('fix', `Falta la columna antes de ${t.v}. Una condición se lee así: columna, operador, valor.`);
+    if (!isCol(t) && !isVal(t)) stop('fix', `${t.v} no puede empezar una condición. Empieza con una columna, por ejemplo goles.`);
+    const leftTok = t, leftIdx = i;
+    const left = operand(t);
+    i++;
+    if (end()) stop('next', `Ahora elige un operador verde para comparar ${t.v}: =, >, <, LIKE o IN.`, ['=', '>', '<']);
+    const o = peek();
+    if (isKw(o, 'AND') || isKw(o, 'OR')) stop('fix', `${o.v} une dos condiciones completas. Antes termina esta: ${t.v}, un operador y un valor.`);
+    if (o.cat !== 'op') stop('fix', `Entre ${t.v} y lo que quieres comparar va un operador verde, como = o >.`);
+    i++;
+
+    if (o.v === 'LIKE' || o.v === 'IN') {
+      if (left.type !== 'col') stop('fix', `Con ${o.v}, a la izquierda va una columna, por ejemplo nombre.`, [], leftIdx);
+    }
+    if (o.v === 'LIKE') {
+      const p = need(x => x.vt === 'str',
+        "Escribe un patrón de texto, por ejemplo '%a%'. El % significa «cualquier cosa».",
+        "LIKE compara con un patrón de texto entre comillas, como '%a%'.", ["'%a%'"]);
+      if (NUMERIC.has(left.name)) warnings.push({ tone: 'warn', text: `LIKE está pensado para textos y ${left.name} es un número.` });
+      return { type: 'like', col: left.name, pattern: p.value };
+    }
+    if (o.v === 'IN') {
+      need(x => isSym(x, '('), 'IN va seguido de una lista entre paréntesis. Añade (.', 'Después de IN abre un paréntesis: ( valor , valor ).', ['(']);
+      const list = [];
+      while (true) {
+        const v = need(isVal, 'Añade un valor a la lista.', 'Dentro de IN ( ) solo van valores separados por comas.', VAL_HINT[left.name] || []);
+        const tp = typeProblem(left.name, v);
+        if (tp) warnings.push({ tone: 'warn', text: tp });
+        list.push(v.value);
+        if (end()) stop('next', 'Pon una coma para añadir otro valor o cierra la lista con ).', [',', ')']);
+        if (isSym(peek(), ',')) { i++; continue; }
+        if (isSym(peek(), ')')) { i++; break; }
+        stop('fix', 'Separa los valores con comas y cierra la lista con ).');
+      }
+      return { type: 'in', col: left.name, list };
+    }
+    const r = need(x => isCol(x) || isVal(x),
+      'Falta el valor con el que comparar. Añade un número o un texto (piezas ámbar).',
+      x => `Después de ${o.v} va un valor (pieza ámbar) o una columna. ${x.v} no encaja aquí.`,
+      left.type === 'col' ? (VAL_HINT[left.name] || []) : ['goles']);
+    const right = operand(r);
+    if (left.type === 'col' && right.type === 'val') {
+      const tp = typeProblem(left.name, r);
+      if (tp) warnings.push({ tone: 'warn', text: `Ojo: ${tp} Tal como está, ninguna fila va a coincidir.` });
+    }
+    if (left.type === 'val' && right.type === 'col') {
+      const tp = typeProblem(right.name, leftTok);
+      if (tp) warnings.push({ tone: 'warn', text: `Ojo: ${tp}` });
+    }
+    return { type: 'cmp', op: o.v, l: left, r: right };
+  }
+
+  const optionalWhere = (after) => {
+    if (end()) return null;
+    if (isKw(peek(), 'WHERE')) { i++; return parseOr('WHERE'); }
+    stop('fix', `${peek().v} sobra aquí. Después de ${after} solo puedes añadir WHERE para elegir qué filas.`);
+  };
+  const leftover = () => {
+    if (!end()) stop('fix', `Sobra ${peek().v}: la consulta ya estaba completa. Quita este bloque o muévelo.`);
+  };
+
+  /* --- inicio --- */
+  if (!tokens.length) stop('start', 'Arrastra un comando azul para empezar. SELECT sirve para leer datos de una tabla.', ['SELECT']);
+  const first = tokens[0];
+  if (first.cat !== 'cmd') {
+    stop('fix', `Toda consulta empieza con un comando azul (SELECT, INSERT, UPDATE o DELETE). ${first.v} no puede ir al principio.`, [], 0);
+  }
+  i = 1;
+
+  /* --- SELECT --- */
+  if (first.v === 'SELECT') {
+    const items = [];
+    if (end()) stop('next', '¡Buen comienzo! Ahora elige qué columnas quieres ver: una pieza gris como nombre, o * para traerlas todas.', ['*', 'nombre']);
+    while (true) {
+      const t = peek();
+      if (isStar(t)) {
+        if (items.length) stop('fix', '* ya significa «todas las columnas», así que no se mezcla con otras columnas.');
+        items.push({ kind: 'star', name: '*', idx: i });
+      } else if (isCol(t)) items.push({ kind: 'col', name: t.v, idx: i });
+      else if (isFn(t)) items.push({ kind: 'fn', name: t.v, idx: i });
+      else if (isTable(t)) stop('fix', 'jugadores es una tabla, no una columna. Primero elige columnas y después escribe FROM jugadores.');
+      else if (isKw(t, 'FROM')) {
+        stop('fix', items.length
+          ? 'Sobra la coma antes de FROM: después de una coma tiene que venir otra columna.'
+          : 'Antes de FROM di qué columnas quieres ver. Pon * o una pieza gris como nombre entre SELECT y FROM.');
+      } else if (isSym(t, ',')) stop('fix', 'La coma separa dos columnas, así que necesita una columna delante.');
+      else stop('fix', `Después de SELECT van las columnas que quieres ver (piezas grises o funciones). ${t.v} no encaja aquí.`);
+      i++;
+      if (end()) stop('next', '¡Bien! Ahora indica de qué tabla quieres sacar los datos usando FROM.', ['FROM', ',']);
+      if (isSym(peek(), ',')) {
+        if (items[items.length - 1].kind === 'star') stop('fix', '* ya incluye todas las columnas, no hace falta añadir más con coma.');
+        i++;
+        if (end()) stop('next', 'Después de la coma añade otra columna.', ['nombre', 'pais', 'goles', 'equipo']);
+        continue;
+      }
+      if (isCol(peek()) || isFn(peek()) || isStar(peek())) {
+        stop('fix', 'Para pedir varias columnas, sepáralas con una coma: nombre , goles. Pon una pieza , entre ellas.');
+      }
+      break;
+    }
+    const t = peek();
+    if (!isKw(t, 'FROM')) {
+      if (t.cat === 'clause' && CLAUSE_ORDER.includes(t.v)) stop('fix', `Falta FROM jugadores antes de ${t.v}. Primero dices de qué tabla salen los datos y después filtras u ordenas.`);
+      if (isTable(t)) stop('fix', 'Casi: entre las columnas y jugadores falta la pieza FROM («desde»).');
+      stop('fix', `Después de las columnas va FROM para indicar la tabla. ${t.v} no encaja aquí.`);
+    }
+    i++;
+    need(isTable, '¿De qué tabla? Añade la pieza jugadores.',
+      x => isCol(x) ? `${x.v} es una columna. Después de FROM va el nombre de una tabla: jugadores.` : 'Después de FROM va el nombre de una tabla. En esta base de datos solo hay una: jugadores.',
+      ['jugadores']);
+
+    const q = { type: 'select', items, where: null, groupBy: [], orderBy: [], limit: null };
+    let stage = 0;
+    while (!end()) {
+      const c = peek();
+      const k = c.cat === 'clause' ? CLAUSE_ORDER.indexOf(c.v) : -1;
+      if (k < 0) {
+        if (isKw(c, 'ASC') || isKw(c, 'DESC')) stop('fix', `${c.v} va justo después de la columna de ORDER BY.`);
+        if (isSym(c, ',')) stop('fix', 'Sobra esta coma.');
+        if (c.cat === 'op') stop('fix', `${c.v} es un operador: va dentro de una condición, después de WHERE.`);
+        stop('fix', `${c.v} sobra aquí. Después de FROM jugadores puedes seguir con WHERE, GROUP BY, ORDER BY o LIMIT.`);
+      }
+      if (k < stage) {
+        stop('fix', k === stage - 1
+          ? `Ya usaste ${c.v}. Cada cláusula aparece una sola vez.`
+          : `${c.v} tiene que ir antes que ${CLAUSE_ORDER[stage - 1]}. El orden es: FROM → WHERE → GROUP BY → ORDER BY → LIMIT.`);
+      }
+      stage = k + 1;
+      i++;
+      if (k === 0) q.where = parseOr('WHERE');
+      if (k === 1) {
+        while (true) {
+          const g = need(isCol, '¿Agrupar por qué columna? Por ejemplo equipo o pais.', x => `GROUP BY necesita una columna. ${x.v} no lo es.`, ['equipo', 'pais']);
+          q.groupBy.push(g.v);
+          if (!end() && isSym(peek(), ',')) { i++; continue; }
+          break;
+        }
+      }
+      if (k === 2) {
+        while (true) {
+          const idx = i;
+          const o = need(x => isCol(x) || isFn(x), '¿Ordenar por qué? Añade una columna, por ejemplo goles.', x => `ORDER BY necesita una columna o una función. ${x.v} no encaja aquí.`, ['goles', 'nombre']);
+          let dir = 'ASC';
+          if (!end() && (isKw(peek(), 'ASC') || isKw(peek(), 'DESC'))) { dir = peek().v; i++; }
+          q.orderBy.push({ kind: isFn(o) ? 'fn' : 'col', name: o.v, dir, idx });
+          if (!end() && isSym(peek(), ',')) { i++; continue; }
+          break;
+        }
+      }
+      if (k === 3) {
+        const n = need(isNum, '¿Cuántas filas como máximo? Añade un número después de LIMIT.', 'LIMIT necesita un número, por ejemplo 3.', ['3', '5']);
+        if (n.value < 0 || !Number.isInteger(n.value)) stop('fix', 'LIMIT necesita un número entero positivo.', [], i - 1);
+        q.limit = n.value;
+      }
+    }
+    q.canAdd = CLAUSE_ORDER.slice(stage);
+    return { ast: q, warnings };
+  }
+
+  /* --- DELETE --- */
+  if (first.v === 'DELETE') {
+    need(x => isKw(x, 'FROM'), 'Después de DELETE va FROM y la tabla de la que quieres borrar.',
+      x => isCol(x) || isStar(x) ? 'DELETE borra filas enteras, no columnas. Escribe DELETE FROM jugadores.' : 'DELETE va seguido de FROM: DELETE FROM jugadores.', ['FROM']);
+    need(isTable, '¿De qué tabla? Añade la pieza jugadores.', 'Después de FROM va el nombre de la tabla: jugadores.', ['jugadores']);
+    const where = optionalWhere('DELETE FROM jugadores');
+    leftover();
+    return { ast: { type: 'delete', where, canAdd: where ? [] : ['WHERE'] }, warnings };
+  }
+
+  /* --- UPDATE --- */
+  if (first.v === 'UPDATE') {
+    need(isTable, 'UPDATE necesita saber qué tabla cambiar. Añade jugadores.', 'Después de UPDATE va el nombre de la tabla: jugadores.', ['jugadores']);
+    need(x => isKw(x, 'SET'), 'Ahora escribe SET para decir qué columna quieres cambiar.', 'Después de UPDATE jugadores va SET («cambia»).', ['SET']);
+    const sets = [];
+    while (true) {
+      const c = need(isCol, '¿Qué columna quieres cambiar? Por ejemplo goles.', x => `Después de SET va una columna (pieza gris). ${x.v} no encaja aquí.`, ['goles', 'equipo']);
+      need(x => isKw(x, '='), `Ahora pon = para dar el nuevo valor de ${c.v}.`, 'En SET se usa = para asignar: columna = valor.', ['=']);
+      const v = need(isVal, `¿Qué valor nuevo tendrá ${c.v}? Añade un número o un texto.`, 'Después de = va un valor concreto (pieza ámbar).', VAL_HINT[c.v] || []);
+      const tp = typeProblem(c.v, v);
+      if (tp) stop('fix', tp, [], i - 1);
+      sets.push({ col: c.v, value: v.value, idx: i - 1 });
+      if (!end() && isSym(peek(), ',')) { i++; continue; }
+      break;
+    }
+    const where = optionalWhere('SET');
+    leftover();
+    return { ast: { type: 'update', sets, where, canAdd: where ? [] : ['WHERE'] }, warnings };
+  }
+
+  /* --- INSERT --- */
+  if (first.v === 'INSERT') {
+    need(x => isKw(x, 'INTO'), 'Después de INSERT va INTO («dentro de») y la tabla.', 'INSERT va seguido de INTO: INSERT INTO jugadores.', ['INTO']);
+    need(isTable, '¿En qué tabla? Añade la pieza jugadores.', 'Después de INTO va el nombre de la tabla: jugadores.', ['jugadores']);
+    if (end()) stop('next', 'Ahora escribe VALUES con los datos entre paréntesis. También puedes abrir ( para elegir columnas.', ['VALUES', '(']);
+    let cols = null;
+    if (isSym(peek(), '(')) {
+      i++;
+      cols = [];
+      while (true) {
+        const c = need(isCol, 'Añade una columna a la lista.', 'Dentro de este paréntesis van nombres de columnas.', ['nombre', 'pais', 'goles', 'equipo']);
+        if (cols.includes(c.v)) stop('fix', `${c.v} está repetida en la lista.`, [], i - 1);
+        cols.push(c.v);
+        if (end()) stop('next', 'Pon una coma para otra columna o cierra la lista con ).', [',', ')']);
+        if (isSym(peek(), ',')) { i++; continue; }
+        if (isSym(peek(), ')')) { i++; break; }
+        stop('fix', 'Separa las columnas con comas y cierra con ).');
+      }
+    }
+    const target = cols || COLUMNS;
+    need(x => isKw(x, 'VALUES'), `Ahora escribe VALUES y, entre paréntesis, ${target.length} valores.`, 'Aquí va VALUES, seguido de los datos entre paréntesis.', ['VALUES']);
+    need(x => isSym(x, '('), `Abre un paréntesis ( para escribir los valores de ${target.join(', ')}.`, 'Después de VALUES abre un paréntesis (.', ['(']);
+    const vals = [];
+    while (true) {
+      const col = target[vals.length];
+      const v = need(isVal, `Añade el valor de ${col || 'la siguiente columna'}.`, 'Dentro de VALUES ( ) solo van valores separados por comas.', col ? (VAL_HINT[col] || []) : []);
+      vals.push({ value: v.value, tok: v, idx: i - 1 });
+      if (end()) {
+        stop('next', vals.length < target.length ? `Pon una coma y el valor de ${target[vals.length]}.` : 'Cierra la lista con ).', vals.length < target.length ? [','] : [')']);
+      }
+      if (isSym(peek(), ',')) { i++; continue; }
+      if (isSym(peek(), ')')) { i++; break; }
+      stop('fix', 'Separa los valores con comas y cierra con ).');
+    }
+    if (vals.length !== target.length) {
+      stop('fix', `Hay ${target.length} columnas (${target.join(', ')}) y escribiste ${vals.length} ${vals.length === 1 ? 'valor' : 'valores'}. Tiene que haber uno por columna, en el mismo orden.`, [], i - 1);
+    }
+    vals.forEach((v, k) => { const tp = typeProblem(target[k], v.tok); if (tp) stop('fix', tp, [], v.idx); });
+    leftover();
+    return { ast: { type: 'insert', cols: target, values: vals.map(v => v.value), idxs: vals.map(v => v.idx), canAdd: [] }, warnings };
+  }
+  stop('fix', 'No reconozco este comando.', [], 0);
+}
+
+/* =====================================================================
+   4. Motor de ejecución sobre el array de jugadores
+   ===================================================================== */
+const norm = s => String(s).toLocaleLowerCase('es');
+const valueOf = (o, r) => (o.type === 'col' ? r[o.name] : o.value);
+function compare(a, b) {
+  if (a == null || b == null || typeof a !== typeof b) return null;
+  return typeof a === 'number' ? a - b : norm(a).localeCompare(norm(b), 'es');
+}
+function likeRegex(p) {
+  const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.');
+  return new RegExp('^' + esc + '$', 'i');
+}
+function test(e, r) {
+  switch (e.type) {
+    case 'and': return test(e.l, r) && test(e.r, r);
+    case 'or':  return test(e.l, r) || test(e.r, r);
+    case 'like': return r[e.col] != null && likeRegex(e.pattern).test(String(r[e.col]));
+    case 'in':  return e.list.some(v => compare(r[e.col], v) === 0);
+    case 'cmp': {
+      const c = compare(valueOf(e.l, r), valueOf(e.r, r));
+      if (c === null) return false;
+      return { '=': c === 0, '<>': c !== 0, '>': c > 0, '<': c < 0, '>=': c >= 0, '<=': c <= 0 }[e.op];
+    }
+  }
+  return false;
+}
+function aggregate(name, rows) {
+  const g = rows.map(r => r.goles).filter(v => typeof v === 'number');
+  switch (name) {
+    case 'COUNT(*)': return rows.length;
+    case 'SUM(goles)': return g.length ? g.reduce((a, b) => a + b, 0) : null;
+    case 'AVG(goles)': return g.length ? Math.round((g.reduce((a, b) => a + b, 0) / g.length) * 10) / 10 : null;
+    case 'MAX(goles)': return g.length ? Math.max(...g) : null;
+    case 'MIN(goles)': return g.length ? Math.min(...g) : null;
+  }
+  return null;
+}
+function sortRows(rows, keys) {
+  if (!keys.length) return rows.slice();
+  return rows.slice().sort((a, b) => {
+    for (const k of keys) {
+      const x = k.get(a), y = k.get(b);
+      if (x == null && y == null) continue;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { sensitivity: 'base' });
+      if (c) return k.dir === 'DESC' ? -c : c;
+    }
+    return 0;
+  });
+}
+
+function runSelect(q, db) {
+  const filtered = q.where ? db.filter(r => test(q.where, r)) : db.slice();
+  const fnItems = q.items.filter(x => x.kind === 'fn');
+  const fnOrder = q.orderBy.filter(o => o.kind === 'fn');
+  const grouped = q.groupBy.length > 0 || fnItems.length > 0 || fnOrder.length > 0;
+
+  if (grouped) {
+    const star = q.items.find(x => x.kind === 'star');
+    if (star) throw new Stop('fix', 'No se puede usar * junto a GROUP BY o funciones como COUNT(*): cada fila del resultado resume varias filas. Elige columnas concretas.', star.idx);
+    for (const it of q.items) {
+      if (it.kind === 'col' && !q.groupBy.includes(it.name)) {
+        throw new Stop('fix', q.groupBy.length
+          ? `${it.name} no está en GROUP BY. Al agrupar, cada columna del SELECT tiene que estar en GROUP BY o dentro de una función como COUNT(*).`
+          : `Para mostrar ${it.name} junto a una función tienes que agrupar: añade GROUP BY ${it.name} después de FROM jugadores.`, it.idx);
+      }
+    }
+    for (const o of q.orderBy) {
+      if (o.kind === 'col' && !q.groupBy.includes(o.name)) throw new Stop('fix', `Al agrupar solo puedes ordenar por columnas del GROUP BY o por funciones. ${o.name} no está agrupada.`, o.idx);
+    }
+    const groups = new Map();
+    if (!q.groupBy.length) groups.set('*', filtered);
+    else filtered.forEach(r => {
+      const key = JSON.stringify(q.groupBy.map(c => (typeof r[c] === 'string' ? norm(r[c]) : r[c])));
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    });
+    let recs = [...groups.values()].map(rows => {
+      const rec = {};
+      q.groupBy.forEach(c => { rec[c] = rows[0] ? rows[0][c] : null; });
+      [...fnItems, ...fnOrder].forEach(f => { rec[f.name] = aggregate(f.name, rows); });
+      return rec;
+    });
+    recs = sortRows(recs, q.orderBy.map(o => ({ get: r => r[o.name], dir: o.dir })));
+    if (q.limit != null) recs = recs.slice(0, q.limit);
+    return { kind: 'select', columns: q.items.map(x => x.name), rows: recs.map(r => q.items.map(x => r[x.name])), matched: filtered.length, grouped: true };
+  }
+
+  let rows = sortRows(filtered, q.orderBy.map(o => ({ get: r => r[o.name], dir: o.dir })));
+  if (q.limit != null) rows = rows.slice(0, q.limit);
+  const columns = q.items[0].kind === 'star' ? COLUMNS : q.items.map(x => x.name);
+  return { kind: 'select', columns, rows: rows.map(r => columns.map(c => r[c])), matched: filtered.length, grouped: false };
+}
+
+function execute(q, db, warnings) {
+  if (q.type === 'select') return runSelect(q, db);
+
+  if (q.type === 'delete') {
+    if (!q.where) warnings.push({ tone: 'warn', text: `Sin WHERE, este DELETE borraría las ${db.length} filas de la tabla.` });
+    const hit = db.filter(r => !q.where || test(q.where, r));
+    return { kind: 'delete', affected: new Set(hit.map(r => r.id)), newDb: db.filter(r => !hit.includes(r)) };
+  }
+
+  if (q.type === 'update') {
+    if (!q.where) warnings.push({ tone: 'warn', text: `Sin WHERE, este UPDATE cambiaría las ${db.length} filas de la tabla.` });
+    const changed = new Map();
+    const newDb = db.map((r, k) => {
+      if (q.where && !test(q.where, r)) return r;
+      const nr = { ...r };
+      const cols = new Set();
+      q.sets.forEach(s => { if (nr[s.col] !== s.value) { nr[s.col] = s.value; cols.add(s.col); } });
+      changed.set(k, cols);
+      return nr;
+    });
+    const ids = newDb.map(r => r.id);
+    if (new Set(ids).size !== ids.length) {
+      const s = q.sets.find(x => x.col === 'id');
+      throw new Stop('fix', 'Ese cambio dejaría dos jugadores con el mismo id. El id identifica a cada fila y no se puede repetir.', s ? s.idx : null);
+    }
+    return { kind: 'update', affected: new Set([...changed.keys()].map(k => db[k].id)), changed, newDb };
+  }
+
+  if (q.type === 'insert') {
+    const row = { id: null, nombre: null, pais: null, goles: null, equipo: null };
+    q.cols.forEach((c, k) => { row[c] = q.values[k]; });
+    const maxId = Math.max(0, ...db.map(r => r.id));
+    if (row.id == null) {
+      row.id = maxId + 1;
+      warnings.push({ tone: 'info', text: `No indicaste id, así que se le asigna el siguiente libre: ${row.id}.` });
+    } else if (db.some(r => r.id === row.id)) {
+      throw new Stop('fix', `Ya existe un jugador con id ${row.id}. El id identifica a cada fila, así que no se puede repetir. Prueba con ${maxId + 1}.`, q.idxs[q.cols.indexOf('id')]);
+    }
+    const missing = COLUMNS.filter(c => c !== 'id' && !q.cols.includes(c));
+    if (missing.length) warnings.push({ tone: 'info', text: `Las columnas que no indicaste (${missing.join(', ')}) quedan vacías: NULL.` });
+    return { kind: 'insert', affected: new Set([row.id]), newRow: row, newDb: [...db, row] };
+  }
+}
+
+/* =====================================================================
+   5. Traducción a lenguaje natural
+   ===================================================================== */
+const FN_TXT = { 'COUNT(*)': 'cuántos jugadores hay', 'SUM(goles)': 'la suma de goles', 'AVG(goles)': 'la media de goles', 'MAX(goles)': 'el máximo de goles', 'MIN(goles)': 'el mínimo de goles' };
+const OP_TXT = { '=': 'es', '<>': 'no es', '>': 'es mayor que', '<': 'es menor que', '>=': 'es mayor o igual que', '<=': 'es menor o igual que' };
+const lit = v => (typeof v === 'string' ? `'${v}'` : String(v));
+const listTxt = a => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' y ' + a[a.length - 1]);
+const opdTxt = o => (o.type === 'col' ? o.name : lit(o.value));
+const wrapOr = e => (e.type === 'or' ? `(${exprTxt(e)})` : exprTxt(e));
+function exprTxt(e) {
+  switch (e.type) {
+    case 'and': return `${wrapOr(e.l)} y ${wrapOr(e.r)}`;
+    case 'or': return `${exprTxt(e.l)} o ${exprTxt(e.r)}`;
+    case 'cmp': return `${opdTxt(e.l)} ${OP_TXT[e.op]} ${opdTxt(e.r)}`;
+    case 'like': return `${e.col} encaja con el patrón '${e.pattern}'`;
+    case 'in': return `${e.col} es ${e.list.length > 1 ? 'uno de estos: ' : ''}${e.list.map(lit).join(', ')}`;
+  }
+  return '';
+}
+function explain(q) {
+  const where = q.where ? `las filas donde ${exprTxt(q.where)}` : null;
+  if (q.type === 'select') {
+    const cols = q.items[0].kind === 'star' ? 'todas las columnas' : listTxt(q.items.map(x => (x.kind === 'fn' ? FN_TXT[x.name] : x.name)));
+    let s = `Muestra ${cols} de la tabla jugadores`;
+    if (where) s += `, solo de ${where}`;
+    if (q.groupBy.length) s += `, con una fila por cada ${listTxt(q.groupBy)}`;
+    if (q.orderBy.length) {
+      s += ', ordenado por ' + listTxt(q.orderBy.map(o => {
+        const text = o.kind === 'col' && !NUMERIC.has(o.name);
+        const dir = o.dir === 'DESC' ? (text ? 'de la Z a la A' : 'de mayor a menor') : (text ? 'de la A a la Z' : 'de menor a mayor');
+        return `${o.kind === 'fn' ? FN_TXT[o.name] : o.name} ${dir}`;
+      }));
+    }
+    if (q.limit != null) s += `, y como máximo ${q.limit} ${q.limit === 1 ? 'fila' : 'filas'}`;
+    return s + '.';
+  }
+  if (q.type === 'delete') return where ? `Borra de la tabla jugadores ${where}.` : 'Borra todas las filas de la tabla jugadores.';
+  if (q.type === 'update') {
+    const sets = listTxt(q.sets.map(s => `${s.col} pasa a valer ${lit(s.value)}`));
+    return where ? `En ${where}, ${sets}.` : `En todas las filas, ${sets}.`;
+  }
+  if (q.type === 'insert') return `Añade un jugador nuevo a la tabla jugadores con ${listTxt(q.cols.map((c, k) => `${c} = ${lit(q.values[k])}`))}.`;
+  return '';
+}
+
+function analyze(tokens, db) {
+  try {
+    const { ast, warnings } = parse(tokens);
+    const result = execute(ast, db, warnings);
+    return { status: 'ok', ast, result, warnings, explain: explain(ast), suggest: ast.canAdd || [] };
+  } catch (e) {
+    if (e instanceof Stop) return { status: e.tone, msg: e.msg, idx: e.idx, suggest: e.suggest, warnings: [] };
+    console.error(e);
+    return { status: 'fix', msg: 'Algo no encaja en esta consulta. Prueba a quitar la última pieza.', idx: null, suggest: [], warnings: [] };
+  }
+}
+
+/* =====================================================================
+   6. Retos
+   ===================================================================== */
+const RETOS = [
+  { id: 'r1', title: 'Toda la plantilla', goal: 'Muestra todas las columnas de todos los jugadores.', hint: 'El * significa «todas las columnas».', ref: ['SELECT', '*', 'FROM', 'jugadores'] },
+  { id: 'r2', title: 'Lista de convocados', goal: 'Muestra solo la columna nombre de cada jugador.', hint: 'Cambia el * por la columna nombre.', ref: ['SELECT', 'nombre', 'FROM', 'jugadores'] },
+  { id: 'r3', title: 'Ficha rápida', goal: 'Muestra el nombre y los goles de cada jugador.', hint: 'Separa dos columnas con una coma: nombre , goles.', ref: ['SELECT', 'nombre', ',', 'goles', 'FROM', 'jugadores'] },
+  { id: 'r4', title: 'Los goleadores', goal: 'Muestra el nombre de quienes marcaron más de 15 goles.', hint: 'Filtra con WHERE goles > 15.', ref: ['SELECT', 'nombre', 'FROM', 'jugadores', 'WHERE', 'goles', '>', '15'] },
+  { id: 'r5', title: 'Selección argentina', goal: 'Muestra todos los datos de los jugadores de Argentina.', hint: "Los textos van entre comillas: pais = 'Argentina'.", ref: ['SELECT', '*', 'FROM', 'jugadores', 'WHERE', 'pais', '=', "'Argentina'"] },
+  { id: 'r6', title: 'El podio', goal: 'Muestra nombre y goles de los 3 máximos goleadores, de más a menos goles.', hint: 'ORDER BY goles DESC ordena de mayor a menor y LIMIT 3 se queda con tres filas.', ref: ['SELECT', 'nombre', ',', 'goles', 'FROM', 'jugadores', 'ORDER BY', 'goles', 'DESC', 'LIMIT', '3'], ordered: true },
+  { id: 'r7', title: 'Goles por equipo', goal: 'Muestra cada equipo junto a la suma de sus goles.', hint: 'Agrupa con GROUP BY equipo y usa la función SUM(goles).', ref: ['SELECT', 'equipo', ',', 'SUM(goles)', 'FROM', 'jugadores', 'GROUP BY', 'equipo'] },
+  { id: 'r8', title: 'Limpieza de plantilla', goal: 'Prepara un DELETE que borre a los jugadores con menos de 5 goles.', hint: 'DELETE FROM jugadores WHERE goles < 5. Basta con la vista previa, no hace falta ejecutarlo.', ref: ['DELETE', 'FROM', 'jugadores', 'WHERE', 'goles', '<', '5'], mutation: true },
+];
+const LEVELS = [
+  { min: 0, name: 'Recién fichado' },
+  { min: 3, name: 'Titular' },
+  { min: 6, name: 'Capitán' },
+  { min: 8, name: 'Leyenda del SQL' },
+];
+function signature(res, ordered) {
+  if (!res) return null;
+  if (res.kind === 'select') {
+    const order = res.columns.map((c, k) => [c, k]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    const rows = res.rows.map(r => JSON.stringify(order.map(o => r[o[1]])));
+    if (!ordered) rows.sort();
+    return 'S|' + order.map(o => o[0]).join(',') + '|' + rows.join(';');
+  }
+  return res.kind + '|' + JSON.stringify(res.newDb);
+}
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* almacenamiento no disponible */ } },
+};
+
+/* =====================================================================
+   7. Interfaz
+   ===================================================================== */
+const START = ['SELECT', 'nombre', ',', 'goles', 'FROM', 'jugadores', 'WHERE', 'goles', '>', '15'];
+const SECTION = 'bg-surface border border-line rounded-2xl';
+
+function App() {
+  const [tokens, setTokens] = useState(() => START.map(makeToken));
+  const [history, setHistory] = useState([]);
+  const [db, setDb] = useState(BASE_DATA);
+  const [custom, setCustom] = useState([]);
+  const [dragFrom, setDragFrom] = useState(null);
+  const [insertAt, setInsertAt] = useState(null);
+  const [done, setDone] = useState(() => store.get('sqlbloques.done', []));
+  const [active, setActive] = useState(() => {
+    const d = store.get('sqlbloques.done', []);
+    const k = RETOS.findIndex(r => !d.includes(r.id));
+    return k < 0 ? 0 : k;
+  });
+  const [justDone, setJustDone] = useState(null);
+  const [toast, setToast] = useState(null);
+  const dragRef = useRef(null);
+  const lastValidRef = useRef(null);
+
+  const analysis = useMemo(() => analyze(tokens, db), [tokens, db]);
+  if (analysis.status === 'ok' && analysis.result.kind === 'select') lastValidRef.current = tokens;
+
+  const commit = next => { setHistory(h => [...h.slice(-40), tokens]); setTokens(next); };
+  const append = v => commit([...tokens, makeToken(v)]);
+  const removeAt = k => commit(tokens.filter((_, j) => j !== k));
+  const insertTok = (tok, at) => { const n = tokens.slice(); n.splice(at, 0, tok); commit(n); };
+  const move = (from, to) => {
+    if (to === from || to === from + 1) return;
+    const n = tokens.slice();
+    const [t] = n.splice(from, 1);
+    n.splice(to > from ? to - 1 : to, 0, t);
+    commit(n);
+  };
+  const undo = () => { if (!history.length) return; setTokens(history[history.length - 1]); setHistory(h => h.slice(0, -1)); };
+  const clear = () => { if (tokens.length) commit([]); };
+  const loadExample = list => commit(list.map(makeToken));
+
+  const flash = (text, tone = 'ok') => {
+    setToast({ text, tone, key: Date.now() });
+  };
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /* Comprobar el reto activo */
+  useEffect(() => {
+    const r = RETOS[active];
+    if (!r || done.includes(r.id) || analysis.status !== 'ok') return;
+    const ref = analyze(r.ref.map(makeToken), db);
+    if (ref.status !== 'ok') return;
+    if (r.mutation && ref.result.affected.size === 0) return;
+    if (signature(analysis.result, r.ordered) === signature(ref.result, r.ordered)) {
+      const next = [...done, r.id];
+      setDone(next);
+      store.set('sqlbloques.done', next);
+      setJustDone(r.id);
+      flash(`¡Reto superado: ${r.title}! +10 XP`);
+    }
+  }, [analysis, active, db]);
+
+  /* Arrastrar y soltar */
+  const startDrag = (e, payload) => {
+    dragRef.current = payload;
+    setTimeout(() => setDragFrom(payload.src), 0);
+    try { e.dataTransfer.setData('text/plain', payload.v || ''); e.dataTransfer.effectAllowed = 'move'; } catch (err) { /* sin dataTransfer */ }
+  };
+  const endDrag = () => { dragRef.current = null; setTimeout(() => { setDragFrom(null); setInsertAt(null); }, 0); };
+  const dropOnEditor = e => {
+    e.preventDefault();
+    const p = dragRef.current;
+    const at = insertAt == null ? tokens.length : insertAt;
+    if (p) {
+      if (p.src === 'palette') insertTok(makeToken(p.v), at);
+      if (p.src === 'editor') move(p.idx, at);
+    }
+    endDrag();
+  };
+  const dropOnPalette = e => {
+    e.preventDefault();
+    const p = dragRef.current;
+    if (p && p.src === 'editor') removeAt(p.idx);
+    endDrag();
+  };
+
+  const addCustom = raw => {
+    let s = raw.trim();
+    if (!s) return;
+    s = s.replace(/^['"‘’“”]+|['"‘’“”]+$/g, '');
+    if (!s) return;
+    const v = /^-?\d+(\.\d+)?$/.test(s) ? s : `'${s.replace(/'/g, '’')}'`;
+    setCustom(c => (c.includes(v) ? c : [v, ...c].slice(0, 8)));
+    append(v);
+  };
+
+  const dbChanged = db !== BASE_DATA;
+  const runChange = () => {
+    if (analysis.status !== 'ok' || analysis.result.kind === 'select') return;
+    const r = analysis.result;
+    setDb(r.newDb);
+    const n = r.affected.size;
+    flash(r.kind === 'insert' ? 'Jugador añadido a la tabla.' : r.kind === 'delete' ? `${n} ${n === 1 ? 'fila borrada' : 'filas borradas'}.` : `${n} ${n === 1 ? 'fila actualizada' : 'filas actualizadas'}.`, 'info');
+  };
+
+  const xp = done.length * 10;
+  const level = [...LEVELS].reverse().find(l => done.length >= l.min);
+
+  return (
+    <div className="min-h-full px-4 pb-16 pt-6 sm:px-6">
+      <div className="mx-auto max-w-6xl">
+        <Header xp={xp} doneCount={done.length} level={level} />
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <main className="flex min-w-0 flex-col gap-6">
+            <Palette custom={custom} onAdd={append} onCustom={addCustom}
+              startDrag={startDrag} endDrag={endDrag} dragFrom={dragFrom}
+              onDragOver={e => { if (dragRef.current && dragRef.current.src === 'editor') e.preventDefault(); }}
+              onDrop={dropOnPalette} />
+
+            <Editor tokens={tokens} analysis={analysis} insertAt={insertAt} setInsertAt={setInsertAt}
+              dragFrom={dragFrom} dragIdx={dragRef.current && dragRef.current.src === 'editor' ? dragRef.current.idx : null}
+              startDrag={startDrag} endDrag={endDrag} onDrop={dropOnEditor}
+              onRemove={removeAt} onMove={move} onUndo={undo} canUndo={history.length > 0} onClear={clear}
+              reto={RETOS[active]} retoDone={done.includes(RETOS[active].id)}
+              onSuggest={append} />
+
+            <Results analysis={analysis} db={db} lastValid={lastValidRef.current}
+              dbChanged={dbChanged} onExecute={runChange} onReset={() => { setDb(BASE_DATA); flash('Tabla restaurada a sus 12 jugadores.', 'info'); }} />
+          </main>
+
+          <aside className="flex min-w-0 flex-col gap-6 lg:sticky lg:top-4 lg:self-start">
+            <Retos active={active} setActive={setActive} done={done} justDone={justDone} onLoad={loadExample}
+              onReset={() => { setDone([]); store.set('sqlbloques.done', []); setActive(0); }} />
+            <CheatSheet />
+          </aside>
+        </div>
+      </div>
+
+      {toast && (
+        <div key={toast.key} role="status"
+          className={`pop fixed left-1/2 z-50 -translate-x-1/2 rounded-full border px-5 py-3 text-sm font-semibold shadow-lg ${toast.tone === 'ok' ? 'border-ok bg-ok-soft text-ok' : 'border-info bg-info-soft text-info'}`}
+          style={{ bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))', maxWidth: 'calc(100% - 32px)' }}>
+          {toast.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="2" y="6" width="17" height="12" rx="3" fill="var(--cmd)" />
+      <circle cx="19" cy="12" r="3" fill="var(--cmd)" />
+      <rect x="21" y="6" width="17" height="12" rx="3" fill="var(--clause)" />
+      <circle cx="21" cy="12" r="3" fill="var(--bg)" />
+      <rect x="2" y="22" width="17" height="12" rx="3" fill="var(--op)" />
+      <circle cx="19" cy="28" r="3" fill="var(--op)" />
+      <rect x="21" y="22" width="17" height="12" rx="3" fill="var(--val)" />
+      <circle cx="21" cy="28" r="3" fill="var(--bg)" />
+    </svg>
+  );
+}
+
+function Header({ xp, doneCount, level }) {
+  const pct = Math.round((doneCount / RETOS.length) * 100);
+  return (
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <Logo />
+        <div>
+          <h1 className="text-2xl font-extrabold leading-tight sm:text-3xl">SQL en Bloques</h1>
+          <p className="text-sm text-muted">Monta consultas pieza a pieza y mira cómo responde la base de datos de la liga.</p>
+        </div>
+      </div>
+      <div className="flex w-full items-center gap-4 rounded-2xl border border-line bg-surface px-4 py-3 sm:w-auto">
+        <div className="min-w-0">
+          <div className="eyebrow">Nivel</div>
+          <div className="font-display text-lg font-extrabold leading-tight">{level.name}</div>
+        </div>
+        <div className="min-w-[120px] flex-1 sm:w-44 sm:flex-none">
+          <div className="flex justify-between text-xs text-muted tabnum"><span>{doneCount}/{RETOS.length} retos</span><span className="font-semibold text-ink">{xp} XP</span></div>
+          <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-surface2 border border-line">
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: pct + '%', background: 'var(--ok)' }} />
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function SectionTitle({ step, title, sub, right }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-baseline gap-2.5">
+        <span className="eyebrow">{step}</span>
+        <h2 className="text-lg font-extrabold">{title}</h2>
+        {sub && <span className="hidden text-sm text-muted sm:inline">{sub}</span>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+/* ---------- Inventario ---------- */
+function Palette({ custom, onAdd, onCustom, startDrag, endDrag, dragFrom, onDragOver, onDrop }) {
+  const [text, setText] = useState('');
+  const removing = dragFrom === 'editor';
+  return (
+    <section className={`${SECTION} relative p-4 sm:p-5`} onDragOver={onDragOver} onDrop={onDrop} aria-label="Inventario de piezas">
+      <SectionTitle step="1" title="Inventario de piezas" sub="Haz clic en una pieza o arrástrala al editor" />
+      <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
+        {GROUPS.map(g => (
+          <div key={g.cat} className="min-w-0">
+            <div className="mb-2.5 flex items-center gap-2">
+              <span className="h-3 w-3 rounded-[4px]" style={{ background: g.cat === 'val' ? 'var(--val)' : `var(--${g.cat})` }} />
+              <span className="text-sm font-semibold">{g.title}</span>
+              <span className="truncate text-xs text-muted">· {g.note}</span>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-3">
+              {g.items.map(v => <PaletteBlock key={v} v={v} onAdd={onAdd} startDrag={startDrag} endDrag={endDrag} />)}
+            </div>
+            {g.cat === 'val' && (
+              <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); onCustom(text); setText(''); }}>
+                <label htmlFor="custom-value" className="sr-only">Tu propio valor</label>
+                <input id="custom-value" value={text} onChange={e => setText(e.target.value)} placeholder="Tu propio valor: 7 o Valencia"
+                  className="min-w-0 flex-1 rounded-lg border border-line bg-surface2 px-3 py-2 font-mono text-xs text-ink placeholder:text-muted" />
+                <button type="submit" className="rounded-lg border border-line bg-surface2 px-3 py-2 text-xs font-semibold hover:border-muted">Crear pieza</button>
+                {custom.length > 0 && (
+                  <div className="flex w-full flex-wrap gap-x-3 gap-y-3 pt-1">
+                    {custom.map(v => <PaletteBlock key={v} v={v} onAdd={onAdd} startDrag={startDrag} endDrag={endDrag} />)}
+                  </div>
+                )}
+              </form>
+            )}
+          </div>
+        ))}
+      </div>
+      {removing && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-bad text-sm font-semibold text-bad" style={{ background: 'color-mix(in srgb, var(--bad-soft) 92%, transparent)' }}>
+          Suelta aquí para quitar la pieza
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PaletteBlock({ v, onAdd, startDrag, endDrag }) {
+  const t = useMemo(() => makeToken(v), [v]);
+  return (
+    <button type="button" className={blockClass(t)} draggable
+      title={TIPS[v] || (t.vt === 'num' ? 'Un número' : 'Un texto')}
+      onClick={() => onAdd(v)}
+      onDragStart={e => startDrag(e, { src: 'palette', v })}
+      onDragEnd={endDrag}>
+      {v}
+    </button>
+  );
+}
+
+/* ---------- Editor ---------- */
+function Editor({ tokens, analysis, insertAt, setInsertAt, dragFrom, dragIdx, startDrag, endDrag, onDrop, onRemove, onMove, onUndo, canUndo, onClear, reto, retoDone, onSuggest }) {
+  const zoneRef = useRef(null);
+  const badIdx = analysis.status === 'fix' ? analysis.idx : null;
+  const over = dragFrom != null && insertAt != null;
+
+  const onZoneOver = e => {
+    if (!dragFrom) return;
+    e.preventDefault();
+    if (e.target === zoneRef.current) setInsertAt(tokens.length);
+  };
+  const onBlockOver = (e, k) => {
+    if (!dragFrom) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setInsertAt(e.clientX < r.left + r.width / 2 ? k : k + 1);
+  };
+  const onLeave = e => {
+    if (zoneRef.current && !zoneRef.current.contains(e.relatedTarget)) setInsertAt(null);
+  };
+
+  return (
+    <section className={`${SECTION} p-4 sm:p-5`} aria-label="Editor visual">
+      <SectionTitle step="2" title="Editor visual" sub="Monta tu consulta"
+        right={
+          <div className="flex gap-2">
+            <button type="button" onClick={onUndo} disabled={!canUndo}
+              className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:border-muted disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
+            <button type="button" onClick={onClear} disabled={!tokens.length}
+              className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-40">Vaciar</button>
+          </div>
+        } />
+
+      <div className={`mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm ${retoDone ? 'bg-ok-soft text-ok' : 'bg-info-soft text-info'}`}>
+        <span className="eyebrow shrink-0" style={{ color: 'inherit' }}>{retoDone ? 'Superado' : 'Reto'}</span>
+        <span className="min-w-0"><b className="font-semibold">{reto.title}.</b> {reto.goal}</span>
+      </div>
+
+      <div ref={zoneRef}
+        className={`in-editor mat mt-3 flex min-h-[124px] flex-wrap content-start items-center gap-y-4 rounded-xl p-4 ${over ? 'is-over' : ''}`}
+        onDragOver={onZoneOver} onDragLeave={onLeave} onDrop={onDrop}
+        aria-label="Zona de montaje: suelta aquí las piezas">
+        {tokens.length === 0 && !over && (
+          <p className="pointer-events-none w-full py-6 text-center text-sm text-muted">
+            Arrastra piezas aquí o haz clic en ellas en el inventario. Empieza por <b className="font-mono font-bold" style={{ color: 'var(--cmd)' }}>SELECT</b>.
+          </p>
+        )}
+        {tokens.map((t, k) => (
+          <React.Fragment key={t.uid}>
+            {over && insertAt === k && <span className="caret" />}
+            <button type="button"
+              className={`${blockClass(t)} ${badIdx === k ? 'is-bad' : ''} ${dragIdx === k ? 'is-dragging' : ''}`}
+              style={{ marginRight: 2 }}
+              draggable
+              title="Clic para quitar · arrastra para mover"
+              aria-label={`${t.v}. Pulsa para quitar`}
+              onClick={() => onRemove(k)}
+              onKeyDown={e => {
+                if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); onMove(k, k - 1); }
+                if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); onMove(k, k + 2); }
+              }}
+              onDragStart={e => startDrag(e, { src: 'editor', idx: k, v: t.v })}
+              onDragEnd={endDrag}
+              onDragOver={e => onBlockOver(e, k)}>
+              {t.v}<span className="x" aria-hidden="true">✕</span>
+            </button>
+          </React.Fragment>
+        ))}
+        {over && insertAt === tokens.length && <span className="caret" style={{ minHeight: 30 }} />}
+      </div>
+      <p className="mt-2 text-xs text-muted">Clic en una pieza del editor para quitarla. Arrástrala para cambiarla de sitio, o devuélvela al inventario.</p>
+
+      <Feedback a={analysis} onSuggest={onSuggest} />
+      {tokens.length > 0 && <SqlLine tokens={tokens} />}
+    </section>
+  );
+}
+
+function Feedback({ a, onSuggest }) {
+  const tone = {
+    ok:    { label: '¡Consulta válida!', cls: 'border-ok bg-ok-soft', ink: 'var(--ok)' },
+    next:  { label: 'Vas bien',          cls: 'border-info bg-info-soft', ink: 'var(--info)' },
+    start: { label: 'Para empezar',      cls: 'border-info bg-info-soft', ink: 'var(--info)' },
+    fix:   { label: 'Revisa la pieza marcada', cls: 'border-bad bg-bad-soft', ink: 'var(--bad)' },
+  }[a.status];
+  const label = a.status === 'fix' && a.idx == null ? 'Revisa la consulta' : tone.label;
+  const suggest = (a.suggest || []).map(makeToken);
+  return (
+    <div className={`mt-4 rounded-xl border-l-4 px-4 py-3 ${tone.cls}`} aria-live="polite">
+      <div className="text-sm font-semibold" style={{ color: tone.ink }}>{label}</div>
+      <p className="mt-1 text-[0.95rem] leading-relaxed text-ink" style={{ maxWidth: '68ch' }}>{a.status === 'ok' ? a.explain : a.msg}</p>
+      {a.warnings && a.warnings.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1.5">
+          {a.warnings.map((w, k) => (
+            <li key={k} className={`rounded-lg px-3 py-1.5 text-sm ${w.tone === 'warn' ? 'bg-warn-soft text-warn' : 'bg-surface text-muted'}`}>{w.text}</li>
+          ))}
+        </ul>
+      )}
+      {suggest.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2.5" style={{ '--slot-bg': 'var(--surface)' }}>
+          <span className="text-xs text-muted">{a.status === 'ok' ? 'Puedes seguir con:' : 'Siguiente pieza:'}</span>
+          {suggest.map(t => (
+            <button key={t.uid} type="button" className={`${blockClass(t)} sm`} onClick={() => onSuggest(t.v)} title="Añadir al final">{t.v}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SqlLine({ tokens }) {
+  const [copied, setCopied] = useState(false);
+  const parts = [];
+  tokens.forEach((t, k) => {
+    const prev = tokens[k - 1];
+    const space = k > 0 && !(t.vt === 'sym' && (t.v === ',' || t.v === ')')) && !(prev && prev.vt === 'sym' && prev.v === '(');
+    parts.push({ t, space });
+  });
+  const text = parts.map(p => (p.space ? ' ' : '') + p.t.v).join('') + ';';
+  const color = t => (t.vt === 'sym' ? 'var(--muted)' : t.cat === 'val' ? 'var(--warn)' : t.cat === 'ident' ? 'var(--ink)' : `var(--${t.cat})`);
+  const copy = () => {
+    const ok = () => { setCopied(true); setTimeout(() => setCopied(false), 1500); };
+    try { navigator.clipboard.writeText(text).then(ok, () => {}); } catch (e) { /* portapapeles no disponible */ }
+  };
+  return (
+    <div className="mt-4 rounded-xl border border-line bg-surface2">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2">
+        <span className="eyebrow">Así se escribe en SQL</span>
+        <button type="button" onClick={copy} className="text-xs font-semibold text-muted hover:text-ink">{copied ? 'Copiado' : 'Copiar'}</button>
+      </div>
+      <pre className="overflow-x-auto px-4 py-3 font-mono text-sm leading-relaxed"><code className="select-all">
+        {parts.map(({ t, space }) => (
+          <span key={t.uid}>{space ? ' ' : ''}<span style={{ color: color(t), fontWeight: t.cat === 'ident' || t.cat === 'val' ? 500 : 700 }}>{t.v}</span></span>
+        ))}<span style={{ color: 'var(--muted)' }}>;</span>
+      </code></pre>
+    </div>
+  );
+}
+
+/* ---------- Resultados ---------- */
+function Results({ analysis, db, lastValid, dbChanged, onExecute, onReset }) {
+  const ok = analysis.status === 'ok';
+  const res = ok ? analysis.result : null;
+
+  let body, title, meta, mode = 'live';
+  if (res && res.kind === 'select') {
+    title = 'Resultado';
+    meta = res.grouped
+      ? `${res.rows.length} ${res.rows.length === 1 ? 'grupo' : 'grupos'} a partir de ${res.matched} ${res.matched === 1 ? 'fila' : 'filas'}`
+      : `${res.rows.length} de ${db.length} filas`;
+    body = <DataTable columns={res.columns} rows={res.rows} />;
+  } else if (res) {
+    mode = 'preview';
+    title = 'Vista previa del cambio';
+    const n = res.affected.size;
+    meta = res.kind === 'insert' ? '1 fila nueva' : `${n} ${n === 1 ? 'fila afectada' : 'filas afectadas'}`;
+    body = <MutationTable res={res} db={db} />;
+  } else {
+    mode = 'stale';
+    const prev = lastValid && analysis.status !== 'start' ? analyze(lastValid, db) : null;
+    if (prev && prev.status === 'ok' && prev.result.kind === 'select') {
+      title = 'Última consulta completa';
+      meta = 'Termina la consulta para actualizar';
+      body = <DataTable columns={prev.result.columns} rows={prev.result.rows} />;
+    } else {
+      title = 'La tabla jugadores';
+      meta = `${db.length} filas · así están los datos ahora`;
+      body = <DataTable columns={COLUMNS} rows={db.map(r => COLUMNS.map(c => r[c]))} />;
+    }
+  }
+
+  return (
+    <section className={`${SECTION} p-4 sm:p-5`} aria-label="Tabla de resultados">
+      <SectionTitle step="3" title={title}
+        right={
+          <div className="flex items-center gap-2 text-xs">
+            {mode === 'live' && <span className="flex items-center gap-1.5 font-semibold text-ok"><span className="inline-block h-2 w-2 rounded-full" style={{ background: 'var(--ok)' }} />En vivo</span>}
+            <span className="rounded-full border border-line px-2.5 py-1 text-muted tabnum">{meta}</span>
+          </div>
+        } />
+
+      {dbChanged && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
+          <span>Has cambiado la tabla jugadores: ahora tiene {db.length} filas.</span>
+          <button type="button" onClick={onReset} className="rounded-lg border border-current px-3 py-1 text-xs font-semibold">Restaurar datos originales</button>
+        </div>
+      )}
+
+      {mode === 'preview' && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface2 px-3 py-2.5">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+            <span>Nada cambia hasta que pulses Ejecutar.</span>
+            {res.kind === 'delete' && <span className="font-semibold text-bad">Rojo: se borraría</span>}
+            {res.kind === 'update' && <span className="font-semibold text-warn">Ámbar: valor nuevo</span>}
+            {res.kind === 'insert' && <span className="font-semibold text-ok">Verde: fila nueva</span>}
+          </div>
+          <button type="button" onClick={onExecute} disabled={res.affected.size === 0}
+            className="rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ background: res.kind === 'delete' ? 'var(--bad)' : 'var(--cmd)', color: 'var(--on-block)' }}>
+            Ejecutar {res.kind.toUpperCase()}
+          </button>
+        </div>
+      )}
+
+      <div className={`mt-3 transition-opacity ${mode === 'stale' && lastValid && analysis.status !== 'start' ? 'opacity-60' : ''}`}>{body}</div>
+    </section>
+  );
+}
+
+const fmt = v => (v == null ? <span className="italic text-muted">NULL</span> : String(v));
+const isNumCol = (rows, k) => rows.length > 0 && rows.every(r => r[k] == null || typeof r[k] === 'number');
+
+function DataTable({ columns, rows }) {
+  if (!rows.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+        Ninguna fila cumple la condición. Prueba con otro valor o con otro operador.
+      </div>
+    );
+  }
+  const sig = columns.join('|');
+  return (
+    <div className="overflow-x-auto rounded-xl border border-line">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="bg-surface2">
+            {columns.map((c, k) => (
+              <th key={k} className={`border-b border-line px-3 py-2 font-mono text-xs font-bold ${isNumCol(rows, k) ? 'text-right' : 'text-left'}`} style={{ color: c.includes('(') ? 'var(--fn)' : 'var(--ink)' }}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={sig + i + JSON.stringify(r)} className="row-in border-b border-line last:border-0" style={{ animationDelay: Math.min(i, 12) * 18 + 'ms' }}>
+              {r.map((v, k) => (
+                <td key={k} className={`whitespace-nowrap px-3 py-2 tabnum ${isNumCol(rows, k) ? 'text-right' : ''}`}>{fmt(v)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MutationTable({ res, db }) {
+  const rows = res.kind === 'insert' ? [...db, res.newRow] : db;
+  return (
+    <div className="overflow-x-auto rounded-xl border border-line">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="bg-surface2">
+            <th className="w-8 border-b border-line" aria-label="Cambio" />
+            {COLUMNS.map(c => <th key={c} className={`border-b border-line px-3 py-2 font-mono text-xs font-bold ${NUMERIC.has(c) ? 'text-right' : 'text-left'}`}>{c}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const del = res.kind === 'delete' && res.affected.has(r.id);
+            const ins = res.kind === 'insert' && r === res.newRow;
+            const upd = res.kind === 'update' ? res.changed.get(i) : null;
+            const shown = upd ? res.newDb[i] : r;
+            const bg = del ? 'var(--bad-soft)' : ins ? 'var(--ok-soft)' : upd ? 'var(--warn-soft)' : 'transparent';
+            return (
+              <tr key={i} className="border-b border-line last:border-0" style={{ background: bg }}>
+                <td className="px-2 text-center font-mono font-bold" style={{ color: del ? 'var(--bad)' : ins ? 'var(--ok)' : 'var(--warn)' }}>{del ? '−' : ins ? '+' : upd ? '~' : ''}</td>
+                {COLUMNS.map(c => {
+                  const changed = upd && upd.has(c);
+                  return (
+                    <td key={c} className={`whitespace-nowrap px-3 py-2 tabnum ${NUMERIC.has(c) ? 'text-right' : ''} ${del ? 'text-muted line-through' : ''}`}>
+                      {changed && <s className="mr-1.5 text-muted">{String(r[c] ?? 'NULL')}</s>}
+                      <span className={changed ? 'font-semibold text-warn' : ''}>{fmt(shown[c])}</span>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ---------- Retos ---------- */
+function Retos({ active, setActive, done, justDone, onLoad, onReset }) {
+  const [hint, setHint] = useState(null);
+  const firstPending = RETOS.findIndex(r => !done.includes(r.id));
+  return (
+    <section className={`${SECTION} p-4`} aria-label="Retos">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-lg font-extrabold">Retos de la jornada</h2>
+        <span className="text-xs text-muted tabnum">{done.length}/{RETOS.length}</span>
+      </div>
+      <p className="mt-1 text-sm text-muted">Elige un reto y monta la consulta. Se marca solo cuando el resultado coincide.</p>
+      <ol className="mt-3 flex flex-col gap-2">
+        {RETOS.map((r, k) => {
+          const isDone = done.includes(r.id);
+          const isActive = k === active;
+          return (
+            <li key={r.id}>
+              <div className={`rounded-xl border px-3 py-2.5 transition-colors ${isActive ? 'border-info bg-info-soft' : 'border-line hover:border-muted'} ${justDone === r.id ? 'pop' : ''}`}>
+                <button type="button" onClick={() => { setActive(k); setHint(null); }} className="flex w-full items-start gap-2.5 text-left">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold tabnum"
+                    style={isDone ? { background: 'var(--ok)', color: 'var(--on-block)' } : { border: '2px solid var(--line)', color: 'var(--muted)' }}>
+                    {isDone ? '✓' : k + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-snug">{r.title}</span>
+                    {isActive && <span className="mt-0.5 block text-sm text-muted">{r.goal}</span>}
+                  </span>
+                </button>
+                {isActive && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
+                    {isDone ? (
+                      <>
+                        <span className="text-xs font-semibold text-ok">+10 XP conseguidos</span>
+                        {firstPending >= 0 && <button type="button" onClick={() => setActive(firstPending)} className="rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ background: 'var(--cmd)', color: 'var(--on-block)' }}>Siguiente reto →</button>}
+                      </>
+                    ) : hint === r.id ? (
+                      <span className="text-xs text-ink">{r.hint}</span>
+                    ) : (
+                      <button type="button" onClick={() => setHint(r.id)} className="text-xs font-semibold text-info underline underline-offset-2">Ver pista</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {done.length === RETOS.length && (
+        <div className="pop mt-3 rounded-xl bg-ok-soft px-3 py-2.5 text-sm text-ok">
+          <b className="font-semibold">¡Temporada completa!</b> Ya dominas SELECT, WHERE, ORDER BY, GROUP BY y DELETE. Prueba ahora a fichar a alguien con INSERT.
+          <button type="button" onClick={() => onLoad(['INSERT', 'INTO', 'jugadores', '(', 'nombre', ',', 'pais', ',', 'goles', ',', 'equipo', ')', 'VALUES', '(', "'Tu nombre'", ',', "'España'", ',', '10', ',', "'Atlético Sol'", ')'])}
+            className="mt-2 block text-xs font-semibold underline underline-offset-2">Cargar un INSERT de ejemplo</button>
+        </div>
+      )}
+      {done.length > 0 && <button type="button" onClick={onReset} className="mt-3 text-xs text-muted underline underline-offset-2 hover:text-ink">Reiniciar progreso</button>}
+    </section>
+  );
+}
+
+function CheatSheet() {
+  const order = [['SELECT', 'cmd'], ['FROM', 'clause'], ['WHERE', 'clause'], ['GROUP BY', 'clause'], ['ORDER BY', 'clause'], ['LIMIT', 'clause']];
+  const forms = [
+    ['INSERT', 'INTO jugadores VALUES ( … )'],
+    ['UPDATE', 'jugadores SET col = valor WHERE …'],
+    ['DELETE', 'FROM jugadores WHERE …'],
+  ];
+  return (
+    <section className={`${SECTION} p-4`} aria-label="Chuleta">
+      <h2 className="text-base font-extrabold">Chuleta</h2>
+      <div className="eyebrow mt-3">Orden de un SELECT</div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-2 font-mono text-[0.7rem] font-bold">
+        {order.map(([w, c], k) => (
+          <React.Fragment key={w}>
+            {k > 0 && <span className="text-muted">→</span>}
+            <span className="rounded-md px-1.5 py-1" style={{ background: `var(--${c})`, color: 'var(--on-block)' }}>{w}</span>
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="eyebrow mt-4">Para cambiar datos</div>
+      <ul className="mt-2 flex flex-col gap-1.5 font-mono text-[0.72rem]">
+        {forms.map(([c, rest]) => (
+          <li key={c} className="leading-relaxed"><b style={{ color: 'var(--cmd)' }}>{c}</b> <span className="text-muted">{rest}</span></li>
+        ))}
+      </ul>
+      <div className="eyebrow mt-4">Patrones con LIKE</div>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted"><span className="font-mono text-ink">'%a%'</span> contiene una a · <span className="font-mono text-ink">'L%'</span> empieza por L · <span className="font-mono text-ink">'_a%'</span> la segunda letra es a</p>
+      <p className="mt-4 border-t border-line pt-3 text-xs text-muted">Datos ficticios con fines didácticos. Los cambios solo viven en esta pestaña.</p>
+    </section>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
