@@ -64,7 +64,8 @@
     border-radius: .55rem;
     color: var(--blk-ink); background: var(--blk);
     box-shadow: 0 3px 0 color-mix(in srgb, var(--blk) 62%, #000);
-    cursor: grab; user-select: none; white-space: nowrap;
+    cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; white-space: nowrap;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
   }
   .blk::after { /* saliente */
@@ -96,6 +97,12 @@
   .in-editor .blk:hover .x, .in-editor .blk:focus-visible .x { display: inline-flex; }
   .blk.is-bad { outline: 3px solid var(--bad); outline-offset: 3px; animation: shake .35s ease 1; }
   .blk.is-dragging { opacity: .35; }
+  @media (pointer: coarse) {
+    .blk { font-size: .86rem; padding: .7rem .85rem .7rem 1rem; }
+    .blk.sm { font-size: .8rem; padding: .6rem .75rem .6rem .9rem; }
+    .in-editor .blk .x { display: inline-flex; }
+  }
+  .ghost { position: fixed; z-index: 60; pointer-events: none; transform: translate(-50%, -135%) scale(1.08); box-shadow: 0 10px 24px rgba(0,0,0,.25); }
 
   .mat {
     --slot-bg: var(--mat);
@@ -760,6 +767,12 @@ function App() {
   const [toast, setToast] = useState(null);
   const dragRef = useRef(null);
   const lastValidRef = useRef(null);
+  const touchRef = useRef(null);
+  const targetRef = useRef(null);
+  const insertAtRef = useRef(null);
+  const apiRef = useRef(null);
+  const [ghost, setGhost] = useState(null);
+  const setIns = v => { insertAtRef.current = v; setInsertAt(v); };
 
   const analysis = useMemo(() => analyze(tokens, db), [tokens, db]);
   if (analysis.status === 'ok' && analysis.result.kind === 'select') lastValidRef.current = tokens;
@@ -810,7 +823,86 @@ function App() {
     setTimeout(() => setDragFrom(payload.src), 0);
     try { e.dataTransfer.setData('text/plain', payload.v || ''); e.dataTransfer.effectAllowed = 'move'; } catch (err) { /* sin dataTransfer */ }
   };
-  const endDrag = () => { dragRef.current = null; setTimeout(() => { setDragFrom(null); setInsertAt(null); }, 0); };
+  const endDrag = () => { dragRef.current = null; setTimeout(() => { setDragFrom(null); setIns(null); }, 0); };
+
+  /* Arrastre táctil: mantener pulsado ~0,2 s y deslizar */
+  apiRef.current = { tokens, insertTok, move, removeAt };
+  const touchStart = (e, payload) => {
+    const t = e.touches[0];
+    const st = { payload, x0: t.clientX, y0: t.clientY, active: false };
+    st.timer = setTimeout(() => {
+      st.active = true;
+      dragRef.current = payload;
+      setDragFrom(payload.src);
+      setGhost({ x: st.x0, y: st.y0, tok: makeToken(payload.v) });
+      try { navigator.vibrate && navigator.vibrate(12); } catch (err) { /* sin vibración */ }
+    }, 200);
+    touchRef.current = st;
+  };
+  useEffect(() => {
+    const locate = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      const zone = el && el.closest('[data-dropzone="editor"]');
+      const pal = el && el.closest('[data-dropzone="palette"]');
+      const blk = zone && el.closest('[data-idx]');
+      targetRef.current = zone ? 'editor' : pal ? 'palette' : null;
+      if (blk) {
+        const r = blk.getBoundingClientRect();
+        const k = Number(blk.dataset.idx);
+        setIns(x < r.left + r.width / 2 ? k : k + 1);
+      } else setIns(zone ? apiRef.current.tokens.length : null);
+    };
+    const onMove = e => {
+      const st = touchRef.current;
+      if (!st) return;
+      const t = e.touches[0];
+      if (!st.active) {
+        if (Math.hypot(t.clientX - st.x0, t.clientY - st.y0) > 10) { clearTimeout(st.timer); touchRef.current = null; }
+        return;
+      }
+      e.preventDefault();
+      st.x = t.clientX; st.y = t.clientY;
+      setGhost(g => g && { ...g, x: t.clientX, y: t.clientY });
+      locate(t.clientX, t.clientY);
+      if (!st.raf) {
+        const tick = () => {
+          if (touchRef.current !== st) return;
+          const edge = 80;
+          const dy = st.y < edge ? -(edge - st.y) / 5 : st.y > window.innerHeight - edge ? (st.y - (window.innerHeight - edge)) / 5 : 0;
+          if (dy) { window.scrollBy(0, dy); locate(st.x, st.y); }
+          st.raf = requestAnimationFrame(tick);
+        };
+        st.raf = requestAnimationFrame(tick);
+      }
+    };
+    const onEnd = e => {
+      const st = touchRef.current;
+      if (!st) return;
+      clearTimeout(st.timer);
+      if (st.raf) cancelAnimationFrame(st.raf);
+      touchRef.current = null;
+      if (!st.active) return;
+      if (e.cancelable) e.preventDefault();
+      const api = apiRef.current, p = st.payload, at = insertAtRef.current;
+      if (targetRef.current === 'editor') {
+        if (p.src === 'palette') api.insertTok(makeToken(p.v), at == null ? api.tokens.length : at);
+        if (p.src === 'editor') api.move(p.idx, at == null ? api.tokens.length : at);
+      } else if (targetRef.current === 'palette' && p.src === 'editor') api.removeAt(p.idx);
+      targetRef.current = null;
+      dragRef.current = null;
+      setGhost(null);
+      setDragFrom(null);
+      setIns(null);
+    };
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd, { passive: false });
+    document.addEventListener('touchcancel', onEnd, { passive: false });
+    return () => {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
   const dropOnEditor = e => {
     e.preventDefault();
     const p = dragRef.current;
@@ -858,11 +950,11 @@ function App() {
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <main className="flex min-w-0 flex-col gap-6">
             <Palette custom={custom} onAdd={append} onCustom={addCustom}
-              startDrag={startDrag} endDrag={endDrag} dragFrom={dragFrom}
+              startDrag={startDrag} endDrag={endDrag} dragFrom={dragFrom} touchStart={touchStart}
               onDragOver={e => { if (dragRef.current && dragRef.current.src === 'editor') e.preventDefault(); }}
               onDrop={dropOnPalette} />
 
-            <Editor tokens={tokens} analysis={analysis} insertAt={insertAt} setInsertAt={setInsertAt}
+            <Editor tokens={tokens} analysis={analysis} insertAt={insertAt} setInsertAt={setIns} touchStart={touchStart}
               dragFrom={dragFrom} dragIdx={dragRef.current && dragRef.current.src === 'editor' ? dragRef.current.idx : null}
               startDrag={startDrag} endDrag={endDrag} onDrop={dropOnEditor}
               onRemove={removeAt} onMove={move} onUndo={undo} canUndo={history.length > 0} onClear={clear}
@@ -881,6 +973,9 @@ function App() {
         </div>
       </div>
 
+      {ghost && (
+        <div className={`${blockClass(ghost.tok)} ghost`} style={{ left: ghost.x, top: ghost.y }} aria-hidden="true">{ghost.tok.v}</div>
+      )}
       {toast && (
         <div key={toast.key} role="status"
           className={`pop fixed left-1/2 z-50 -translate-x-1/2 rounded-full border px-5 py-3 text-sm font-semibold shadow-lg ${toast.tone === 'ok' ? 'border-ok bg-ok-soft text-ok' : 'border-info bg-info-soft text-info'}`}
@@ -948,22 +1043,35 @@ function SectionTitle({ step, title, sub, right }) {
 }
 
 /* ---------- Inventario ---------- */
-function Palette({ custom, onAdd, onCustom, startDrag, endDrag, dragFrom, onDragOver, onDrop }) {
+const NATIVE_DRAG = !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
+function Palette({ custom, onAdd, onCustom, startDrag, endDrag, dragFrom, touchStart, onDragOver, onDrop }) {
   const [text, setText] = useState('');
+  const [tab, setTab] = useState('cmd');
   const removing = dragFrom === 'editor';
   return (
-    <section className={`${SECTION} relative p-4 sm:p-5`} onDragOver={onDragOver} onDrop={onDrop} aria-label="Inventario de piezas">
+    <section className={`${SECTION} relative p-4 sm:p-5`} onDragOver={onDragOver} onDrop={onDrop} data-dropzone="palette" aria-label="Inventario de piezas">
       <SectionTitle step="1" title="Inventario de piezas" sub="Haz clic en una pieza o arrástrala al editor" />
+      <p className="mt-1 text-xs text-muted sm:hidden">Toca una pieza para añadirla, o mantenla pulsada y arrástrala.</p>
+      <div className="-mx-1 mt-3 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:hidden" role="tablist" aria-label="Tipos de pieza">
+        {GROUPS.map(g => (
+          <button key={g.cat} type="button" role="tab" aria-selected={tab === g.cat} onClick={() => setTab(g.cat)}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold"
+            style={tab === g.cat ? { borderColor: 'var(--ink)', background: 'var(--surface-2)' } : { borderColor: 'var(--line)', color: 'var(--muted)' }}>
+            <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: `var(--${g.cat})` }} />{g.title}
+          </button>
+        ))}
+      </div>
       <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
         {GROUPS.map(g => (
-          <div key={g.cat} className="min-w-0">
+          <div key={g.cat} className={`min-w-0 sm:block ${tab === g.cat ? 'block' : 'hidden'}`}>
             <div className="mb-2.5 flex items-center gap-2">
               <span className="h-3 w-3 rounded-[4px]" style={{ background: g.cat === 'val' ? 'var(--val)' : `var(--${g.cat})` }} />
               <span className="text-sm font-semibold">{g.title}</span>
               <span className="truncate text-xs text-muted">· {g.note}</span>
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-3">
-              {g.items.map(v => <PaletteBlock key={v} v={v} onAdd={onAdd} startDrag={startDrag} endDrag={endDrag} />)}
+              {g.items.map(v => <PaletteBlock key={v} v={v} onAdd={onAdd} startDrag={startDrag} endDrag={endDrag} touchStart={touchStart} />)}
             </div>
             {g.cat === 'val' && (
               <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); onCustom(text); setText(''); }}>
@@ -973,7 +1081,7 @@ function Palette({ custom, onAdd, onCustom, startDrag, endDrag, dragFrom, onDrag
                 <button type="submit" className="rounded-lg border border-line bg-surface2 px-3 py-2 text-xs font-semibold hover:border-muted">Crear pieza</button>
                 {custom.length > 0 && (
                   <div className="flex w-full flex-wrap gap-x-3 gap-y-3 pt-1">
-                    {custom.map(v => <PaletteBlock key={v} v={v} onAdd={onAdd} startDrag={startDrag} endDrag={endDrag} />)}
+                    {custom.map(v => <PaletteBlock key={v} v={v} onAdd={onAdd} startDrag={startDrag} endDrag={endDrag} touchStart={touchStart} />)}
                   </div>
                 )}
               </form>
@@ -990,10 +1098,11 @@ function Palette({ custom, onAdd, onCustom, startDrag, endDrag, dragFrom, onDrag
   );
 }
 
-function PaletteBlock({ v, onAdd, startDrag, endDrag }) {
+function PaletteBlock({ v, onAdd, startDrag, endDrag, touchStart }) {
   const t = useMemo(() => makeToken(v), [v]);
   return (
-    <button type="button" className={blockClass(t)} draggable
+    <button type="button" className={blockClass(t)} draggable={NATIVE_DRAG}
+      onTouchStart={e => touchStart(e, { src: 'palette', v })}
       title={TIPS[v] || (t.vt === 'num' ? 'Un número' : 'Un texto')}
       onClick={() => onAdd(v)}
       onDragStart={e => startDrag(e, { src: 'palette', v })}
@@ -1004,7 +1113,7 @@ function PaletteBlock({ v, onAdd, startDrag, endDrag }) {
 }
 
 /* ---------- Editor ---------- */
-function Editor({ tokens, analysis, insertAt, setInsertAt, dragFrom, dragIdx, startDrag, endDrag, onDrop, onRemove, onMove, onUndo, canUndo, onClear, reto, retoDone, onSuggest }) {
+function Editor({ tokens, analysis, insertAt, setInsertAt, touchStart, dragFrom, dragIdx, startDrag, endDrag, onDrop, onRemove, onMove, onUndo, canUndo, onClear, reto, retoDone, onSuggest }) {
   const zoneRef = useRef(null);
   const badIdx = analysis.status === 'fix' ? analysis.idx : null;
   const over = dragFrom != null && insertAt != null;
@@ -1044,11 +1153,11 @@ function Editor({ tokens, analysis, insertAt, setInsertAt, dragFrom, dragIdx, st
 
       <div ref={zoneRef}
         className={`in-editor mat mt-3 flex min-h-[124px] flex-wrap content-start items-center gap-y-4 rounded-xl p-4 ${over ? 'is-over' : ''}`}
-        onDragOver={onZoneOver} onDragLeave={onLeave} onDrop={onDrop}
+        onDragOver={onZoneOver} onDragLeave={onLeave} onDrop={onDrop} data-dropzone="editor"
         aria-label="Zona de montaje: suelta aquí las piezas">
         {tokens.length === 0 && !over && (
           <p className="pointer-events-none w-full py-6 text-center text-sm text-muted">
-            Arrastra piezas aquí o haz clic en ellas en el inventario. Empieza por <b className="font-mono font-bold" style={{ color: 'var(--cmd)' }}>SELECT</b>.
+            Arrastra piezas aquí o tócalas en el inventario. Empieza por <b className="font-mono font-bold" style={{ color: 'var(--cmd)' }}>SELECT</b>.
           </p>
         )}
         {tokens.map((t, k) => (
@@ -1057,7 +1166,9 @@ function Editor({ tokens, analysis, insertAt, setInsertAt, dragFrom, dragIdx, st
             <button type="button"
               className={`${blockClass(t)} ${badIdx === k ? 'is-bad' : ''} ${dragIdx === k ? 'is-dragging' : ''}`}
               style={{ marginRight: 2 }}
-              draggable
+              data-idx={k}
+              draggable={NATIVE_DRAG}
+              onTouchStart={e => touchStart(e, { src: 'editor', idx: k, v: t.v })}
               title="Clic para quitar · arrastra para mover"
               aria-label={`${t.v}. Pulsa para quitar`}
               onClick={() => onRemove(k)}
@@ -1074,7 +1185,7 @@ function Editor({ tokens, analysis, insertAt, setInsertAt, dragFrom, dragIdx, st
         ))}
         {over && insertAt === tokens.length && <span className="caret" style={{ minHeight: 30 }} />}
       </div>
-      <p className="mt-2 text-xs text-muted">Clic en una pieza del editor para quitarla. Arrástrala para cambiarla de sitio, o devuélvela al inventario.</p>
+      <p className="mt-2 text-xs text-muted">Toca o haz clic en una pieza del editor para quitarla. Arrástrala (en móvil, mantenla pulsada) para cambiarla de sitio, o devuélvela al inventario.</p>
 
       <Feedback a={analysis} onSuggest={onSuggest} />
       {tokens.length > 0 && <SqlLine tokens={tokens} />}
