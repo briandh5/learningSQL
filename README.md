@@ -2,8 +2,6 @@
 
 > Aprende la sintaxis de SQL de forma puramente visual, interactiva y en tiempo real.
 
-![SQL en Bloques Demo](https://learningsql-zeta.vercel.app/) <!-- Puedes reemplazar por una imagen o GIF del proyecto -->
-
 **SQL en Bloques** es un entorno educativo e interactivo diseñado para que estudiantes y principiantes aprendan a construir consultas de bases de datos mediante un sistema de piezas *drag-and-drop* (arrastrar y soltar). Elimina la fricción de la sintaxis y los errores de terminal, permitiendo visualizar al instante cómo cada cláusula transforma un conjunto de datos.
 
 👉 **Probar la app en vivo:** [learningsql-zeta.vercel.app](https://learningsql-zeta.vercel.app/)
